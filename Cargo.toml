@@ -1,0 +1,17 @@
+[package]
+name = "dcp"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+clap = { version = "4.5.26", features = ["derive"] }
+thiserror = "2.0.15"
+faststr = { version = "0.2.32", features = ["serde"] }
+libc = "0.2.183"
+io-buffer = "1.0.7"
+io-uring = "0.7.11"
+nix = "0.31.2"
+bytesize = "2.3.1"
+thousands = "0.2.0"

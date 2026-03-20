@@ -1,0 +1,25 @@
+volumes:
+  cargo:
+  target:
+
+services:
+  rst:
+    build: .
+    environment:
+      - RUST_LOG=info,dcp=info,tokio::task=info,tower_http=info
+      #- LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc.so
+    volumes:
+      - cargo:/usr/local/cargo
+      - target:/dcp/target
+      - ./src:/dcp/src:r
+      - ./dat:/dcp/dat
+      - ./Cargo.toml:/dcp/Cargo.toml
+      - ./Cargo.lock:/dcp/Cargo.lock
+      - /run/media/akz/36d01703-71d5-434d-9404-1111fb1e9ec6:/dcp/usb
+    security_opt:
+      - seccomp:unconfined
+    working_dir: /dcp
+    deploy:
+      resources:
+        limits:
+          memory: 8g
