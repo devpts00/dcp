@@ -18,10 +18,19 @@ run-debug: build-debug
 		--name dcp rst ./target/debug/dcp \
 		/dcp/usb/yakuza.mkv /dcp/dat/dst.dat --direct
 
-run-release: build-debug
+run-release-donna: build-release
 	docker compose run --rm -it --remove-orphans \
-		--name dcp rst ./target/debug/dcp \
+		--name dcp rst ./target/release/dcp \
+		--direct \
 		--block-size=4KiB \
-		--buffer-size=256KiB \
+		--buffer-size=512KiB \
+		--buffer-count=2 \
+		/dcp/dat/donna.mkv /dcp/dat/donna.copy.mkv
+
+run-release-yakuza: build-release
+	docker compose run --rm -it --remove-orphans \
+		--name dcp rst ./target/release/dcp \
+		--block-size=4KiB \
+		--buffer-size=512KiB \
 		--buffer-count=2 \
 		/dcp/dat/yakuza.mkv /dcp/dat/yakuza.copy.mkv

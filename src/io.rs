@@ -3,6 +3,7 @@ use std::ops::{Index, IndexMut};
 use crate::error::DcpError;
 use io_buffer::Buffer;
 use io_uring::IoUring;
+use memmap2::{Advice, MmapMut};
 use nix::errno::Errno;
 use tracing::debug;
 use crate::util::allocate;
@@ -102,4 +103,13 @@ pub fn poll(ring: &mut IoUring) -> io_uring::cqueue::Entry {
             return cqe;
         }
     }
+}
+
+pub fn allocate(size: u32, align: u32) -> Result<*mut u8, Errno> {
+    let mut x = MmapMut::map_anon(12345).unwrap();
+    x.advise(Advice::Normal).unwrap();
+    let y = x.as_mut_ptr();
+
+
+
 }

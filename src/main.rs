@@ -53,9 +53,6 @@ fn copy(
 
     let write_bit: u64 = 1 << 32;
 
-    // let mut io_vecs = create_io_vecs(buffer_size, block_size, buffer_count)?;
-    // register_io_vecs(ring, &mut io_vecs)?;
-
     let mut buffers = Buffers::new(buffer_size, block_size, buffer_count as u16)?;
     buffers.register(ring)?;
 
@@ -75,6 +72,8 @@ fn copy(
 
     while read_size < file_size || write_size < file_size {
 
+        let mut submit = false;
+
         // 1. Submit read if reading is not in progress and vacant buffers are available
         if read_offset < file_size {
             if let Some(idx) = read_indices.pop_front() {
@@ -84,7 +83,8 @@ fn copy(
                     .build()
                     .flags(squeue::Flags::IO_LINK)
                     .user_data(idx as u64);
-                submit(ring, sqe)?;
+                unsafe { ring.submission().push(&sqe)? };
+                submit = true;
                 read_offset += buffer_size as u64;
             }
         }
@@ -98,9 +98,14 @@ fn copy(
                     .build()
                     .flags(squeue::Flags::IO_LINK)
                     .user_data(idx as u64 | write_bit);
-                submit(ring, sqe)?;
+                unsafe { ring.submission().push(&sqe)? };
+                submit = true;
                 write_offset += buffer_size as u64;
             }
+        }
+
+        if submit {
+            ring.submit()?;
         }
 
         // 3. Collect completions if any
@@ -145,8 +150,6 @@ fn open(ring: &mut IoUring, path: FastStr, flags: libc::c_int) -> Result<types::
     Ok(Fd(res))
 }
 
-
-
 fn close(ring: &mut IoUring, fd: Fd) -> Result<(), DcpError> {
     debug!("close, fd: {:?}", fd);
     let sqe = opcode::Close::new(fd).build();
@@ -154,6 +157,23 @@ fn close(ring: &mut IoUring, fd: Fd) -> Result<(), DcpError> {
     let cqe = poll(ring);
     check(cqe.result())?;
     Ok(())
+}
+
+fn fadvise(ring: &mut IoUring, ffd: Fixed, len: u32, flags: i32) -> Result<(), DcpError> {
+    debug!("fadvise, fd: {:?}, flags: {}", ffd, flags);
+    let sqe = opcode::Fadvise::new(ffd, len as libc::off_t, flags).build();
+    submit(ring, sqe)?;
+    let cqe = poll(ring);
+    check(cqe.result())?;
+    Ok(())
+}
+
+fn flags(direct: bool) -> libc::c_int {
+    if direct {
+        libc::O_DIRECT
+    } else {
+        0
+    }
 }
 
 fn run(cmd: Cmd) -> Result<(), DcpError> {
@@ -169,16 +189,21 @@ fn run(cmd: Cmd) -> Result<(), DcpError> {
 
     debug!("create ring");
     let mut ring = IoUring::builder()
-        .setup_sqpoll(1000)
-        .build(buffer_count + 1)?;
+        .setup_sqpoll(100)
+        .build(2 * buffer_count)?;
 
-    let read_fd = open(&mut ring, cmd.src, libc::O_RDONLY | libc::O_DIRECT)?;
-    let write_fd = open(&mut ring, cmd.dst, libc::O_WRONLY | libc::O_DIRECT | libc::O_CREAT)?;
+    // libc::O_DIRECT
+    let read_fd = open(&mut ring, cmd.src, flags(cmd.direct) | libc::O_RDONLY)?;
+    let write_fd = open(&mut ring, cmd.dst, flags(cmd.direct) | libc::O_WRONLY | libc::O_CREAT)?;
 
     debug!("register file descriptors");
     ring.submitter().register_files(&[read_fd.0, write_fd.0])?;
     let read_ffd = Fixed(0);
     let write_ffd = Fixed(1);
+
+    // info!("advise");
+    // fadvise(&mut ring, read_ffd, 0, libc::POSIX_FADV_SEQUENTIAL)?;
+    // fadvise(&mut ring, write_ffd, 0, libc::POSIX_FADV_SEQUENTIAL)?;
 
     copy(&mut ring, read_ffd, write_ffd, file_size, block_size, buffer_size, buffer_count)?;
 
