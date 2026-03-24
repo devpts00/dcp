@@ -1,26 +1,47 @@
 use bytesize::ByteSize;
-use clap::Parser;
+use clap::{Args, Parser};
 use faststr::FastStr;
+
+
+#[derive(Args, Debug)]
+pub struct Files {
+    #[arg(long)]
+    pub src: FastStr,
+    #[arg(long)]
+    pub dst: FastStr,
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
-pub struct Cmd {
-
-    #[arg(long)]
-    pub direct: bool,
-
-    #[arg(long)]
-    pub poll: bool,
-
-    #[arg(long)]
-    pub block_size: ByteSize,
-
-    #[arg(long)]
-    pub buffer_size: ByteSize,
-
-    #[arg(long)]
-    pub buffer_count: u16,
-
-    pub src: FastStr,
-    pub dst: FastStr,
+pub enum Cmd {
+    IoUring {
+        #[command(flatten)]
+        files: Files,
+        #[arg(long)]
+        direct: bool,
+        #[arg(long)]
+        poll_ms: Option<u32>,
+        #[arg(long)]
+        block_size: ByteSize,
+        #[arg(long)]
+        buffer_size: ByteSize,
+        #[arg(long)]
+        buffer_count: u8,
+    },
+    Stream {
+        #[command(flatten)]
+        files: Files,
+        #[arg(long)]
+        direct: bool,
+        #[arg(long)]
+        buffer_size: ByteSize,
+    },
+    Syscall {
+        #[command(flatten)]
+        files: Files,
+        #[arg(long)]
+        direct: bool,
+        #[arg(long)]
+        chunk_size: ByteSize,
+    }
 }

@@ -1,91 +1,70 @@
-use std::alloc::Layout;
-use std::ops::{Index, IndexMut};
-use crate::error::DcpError;
-use io_buffer::Buffer;
+use std::fs::File;
+use std::os::fd::AsRawFd;
+use std::ptr::write_bytes;
+use faststr::FastStr;
 use io_uring::IoUring;
 use memmap2::{Advice, MmapMut};
-use nix::errno::Errno;
-use tracing::debug;
-use crate::util::allocate;
+use std::os::unix::prelude::OpenOptionsExt;
+use libc::posix_fadvise64;
+use tracing::{debug, instrument};
+use crate::error::DcpError;
 
-pub struct IoVec(Buffer);
 
-impl IoVec {
-    pub fn new(size: u32, align: u32) -> Result<Self, Errno> {
+
+pub struct Buffer {
+    mmap: MmapMut,
+    ptr: *mut u8,
+    size: usize,
+}
+
+// pub struct Buffers {
+//     bufs: Vec<*mut u8>,
+//     mmap: MmapMut,
+//     size: usize,
+// }
+
+impl Buffer {
+    pub fn new(size: u32, align: u32) -> Result<Self, std::io::Error> {
         debug!("alloc, size: {}, align: {}", size, align);
-        let buf = Buffer::aligned_by(size as i32, align as u32)?;
-        Ok(IoVec(buf))
+        let size = size as usize;
+        let align = align as usize;
+        let total: usize = size + align;
+        let mut mmap = MmapMut::map_anon(total)?;
+        //mmap.advise(Advice::WillNeed)?;
+        //mmap.lock()?;
+        let ptr_base = mmap.as_mut_ptr();
+        unsafe { write_bytes(ptr_base, 0, total); }
+        let ptr = ptr_base.map_addr(|p| (p + align - 1) & !(align - 1));
+        debug!("ptr, total: {}, base: {:?}, aligned: {:?}", total, ptr_base, ptr);
+        Ok(Buffer { mmap, ptr, size })
     }
-    pub fn as_iovec(&mut self) -> libc::iovec {
-        let iov_base = self.0.get_raw_mut() as *mut libc::c_void;
-        let iov_len = self.0.len() as libc::size_t;
+    pub fn as_iovec(&self) -> libc::iovec {
+        let iov_base = self.ptr as *mut libc::c_void;
+        let iov_len = self.size as libc::size_t;
         libc::iovec { iov_base, iov_len }
     }
-    pub fn as_raw_mut(&mut self) -> *mut u8 {
-        self.0.get_raw_mut()
+    pub fn as_ptr(&self) -> *const u8 {
+        self.ptr
     }
-    pub fn len(&self) -> u32 {
-        self.0.len() as u32
-    }
-}
-
-pub struct Buffers {
-    bufs: Vec<*mut u8>,
-    layout: Layout
-}
-
-impl Buffers {
-    pub fn new(size: u32, align: u32, count: u16) -> Result<Self, DcpError> {
-        debug!("alloc, size: {}, align: {}, count: {}", size, align, count);
-        let layout = Layout::from_size_align(size as usize, align as usize)?;
-        let mut bufs = Vec::with_capacity(count as usize);
-        for _ in 0..count {
-            let ptr = allocate(layout)?;
-            bufs.push(ptr);
-        }
-        Ok(Buffers { bufs, layout })
-    }
-    pub fn register(&mut self, ring: &mut IoUring) -> std::io::Result<()> {
-        let io_vecs: Vec<libc::iovec> = self.bufs.iter_mut().map(|ptr| {
-            let iov_base = *ptr as *mut libc::c_void;
-            let iov_len = self.layout.size() as libc::size_t;
-            libc::iovec { iov_base, iov_len }
-        }).collect();
-        unsafe {
-            ring.submitter().register_buffers(io_vecs.as_slice())
-        }
-    }
-}
-
-impl Index<u16> for Buffers {
-    type Output = *mut u8;
-    fn index(&self, index: u16) -> &Self::Output {
-        self.bufs.index(index as usize)
-    }
-}
-
-impl IndexMut<u16> for Buffers {
-    fn index_mut(&mut self, index: u16) -> &mut Self::Output {
-        self.bufs.index_mut(index as usize)
-    }
-}
-
-impl Drop for Buffers {
-    fn drop(&mut self) {
-        for buf in &self.bufs {
-            unsafe {
-                std::alloc::dealloc(*buf, self.layout)
-            }
-        }
+    pub fn as_ptr_mut(&self) -> *mut u8 {
+        self.ptr
     }
 }
 
 #[inline]
-pub fn check(res: i32) -> Result<i32, std::io::Error> {
+pub fn check_size_or_error(res: i32) -> Result<u32, std::io::Error> {
     if res < 0 {
         Err(std::io::Error::from_raw_os_error(-res))
     } else {
-        Ok(res)
+        Ok(res as u32)
+    }
+}
+
+pub fn check_size_or_errno(res: isize) -> Result<usize, std::io::Error> {
+    if res < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(res as usize)
     }
 }
 
@@ -105,11 +84,31 @@ pub fn poll(ring: &mut IoUring) -> io_uring::cqueue::Entry {
     }
 }
 
-pub fn allocate(size: u32, align: u32) -> Result<*mut u8, Errno> {
-    let mut x = MmapMut::map_anon(12345).unwrap();
-    x.advise(Advice::Normal).unwrap();
-    let y = x.as_mut_ptr();
 
+#[derive(Debug)]
+pub enum Mode {
+    Read, Write
+}
 
-
+#[instrument(level="debug")]
+pub fn open_file(path: &FastStr, mode: Mode, flags: libc::c_int, advise: libc::c_int) -> Result<File, std::io::Error> {
+    let mut options = File::options();
+    match mode {
+        Mode::Read => {
+            options.read(true);
+        }
+        Mode::Write => {
+            options.write(true).create(true).truncate(true);
+        }
+    }
+    if flags != 0 {
+        options.custom_flags(flags);
+    }
+    let file = options.open(path.as_str())?;
+    if advise != 0 {
+        unsafe {
+            posix_fadvise64(file.as_raw_fd(), 0, 0, advise);
+        }
+    }
+    Ok(file)
 }

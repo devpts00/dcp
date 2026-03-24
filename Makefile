@@ -18,19 +18,57 @@ run-debug: build-debug
 		--name dcp rst ./target/debug/dcp \
 		/dcp/usb/yakuza.mkv /dcp/dat/dst.dat --direct
 
-run-release-donna: build-release
+run-release-donna-io-uring: build-release
 	docker compose run --rm -it --remove-orphans \
 		--name dcp rst ./target/release/dcp \
+		io-uring \
 		--direct \
 		--block-size=4KiB \
-		--buffer-size=512KiB \
+		--buffer-size=16MiB \
 		--buffer-count=2 \
-		/dcp/dat/donna.mkv /dcp/dat/donna.copy.mkv
+		--src=/dcp/dat/donna.mkv \
+		--dst=/dcp/dat/donna.copy.mkv
 
-run-release-yakuza: build-release
+run-release-yakuza-io-uring: build-release
 	docker compose run --rm -it --remove-orphans \
 		--name dcp rst ./target/release/dcp \
+		io-uring \
+		--direct \
 		--block-size=4KiB \
-		--buffer-size=512KiB \
+		--buffer-size=16MiB \
 		--buffer-count=2 \
-		/dcp/dat/yakuza.mkv /dcp/dat/yakuza.copy.mkv
+		--src=/dcp/dat/yakuza.mkv \
+		--dst=/dcp/dat/yakuza.copy.mkv
+
+run-release-donna-stream: build-release
+	docker compose run --rm -it --remove-orphans \
+		--name dcp rst ./target/release/dcp \
+	  	stream \
+	  	--direct \
+		--buffer-size=16MiB \
+		--src=/dcp/usb/donna.mkv \
+		--dst=/dcp/dat/donna.copy.mkv
+
+run-release-yakuza-stream: build-release
+	docker compose run --rm -it --remove-orphans \
+		--name dcp rst ./target/release/dcp \
+	  	stream \
+	  	--direct \
+		--buffer-size=16MiB \
+		--src=/dcp/usb/yakuza.mkv \
+		--dst=/dcp/dat/yakuza.copy.mkv
+
+run-release-donna-syscall: build-release
+	docker compose run --rm -it --remove-orphans \
+		--name dcp rst ./target/release/dcp \
+	  	syscall \
+		--src=/dcp/dat/donna.mkv \
+		--dst=/dcp/dat/donna.copy.mkv
+
+run-release-yakuza-syscall: build-release
+	docker compose run --rm -it --remove-orphans \
+		--name dcp rst ./target/release/dcp \
+	  	syscall \
+	  	--chunk-size=16MiB \
+		--src=/dcp/dat/yakuza.mkv \
+		--dst=/dcp/dat/yakuza.copy.mkv

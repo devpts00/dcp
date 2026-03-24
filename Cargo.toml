@@ -10,9 +10,9 @@ clap = { version = "4.5.26", features = ["derive"] }
 thiserror = "2.0.15"
 faststr = { version = "0.2.32", features = ["serde"] }
 libc = "0.2.183"
-io-buffer = "1.0.7"
 io-uring = "0.7.11"
-nix = "0.31.2"
+nix = { version = "0.31.2", features = ["ioctl"] }
 bytesize = "2.3.1"
 thousands = "0.2.0"
 memmap2 = "0.9.10"
+num-integer = "0.1.46"
