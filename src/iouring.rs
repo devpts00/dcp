@@ -1,18 +1,61 @@
-use crate::args::Cmd;
+use std::alloc::Layout;
 use crate::error::DcpError;
-use crate::io::{check_size_or_error, poll, submit, Buffer};
-use crate::util::{calc_sizes, init_tracing, log, show_progress};
-use clap::Parser;
+use crate::common::{allocate, calc_sizes, check_size_or_error, deallocate, show_progress};
 use faststr::FastStr;
-use io_uring::types::{Fd, Fixed, FsyncFlags};
+use io_uring::types::{Fd, Fixed};
 use io_uring::{opcode, types, IoUring};
 use std::collections::VecDeque;
 use std::os::fd::RawFd;
-use std::os::linux::fs::MetadataExt;
-use std::time::Instant;
 use io_uring::squeue::Flags;
 use thousands::Separable;
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, instrument, trace};
+
+pub struct Buffer {
+    ptr: *mut u8,
+    layout: Layout,
+}
+
+impl Buffer {
+    pub fn new(size: usize, align: usize) -> Result<Buffer, DcpError> {
+        debug!("alloc, size: {}, align: {}", size, align);
+        let layout = Layout::from_size_align(size, align)?;
+        let ptr = unsafe { allocate(layout) }?;
+        Ok(Buffer { ptr, layout })
+    }
+    pub fn as_iovec(&self) -> libc::iovec {
+        let iov_base = self.ptr as *mut libc::c_void;
+        let iov_len = self.layout.size() as libc::size_t;
+        libc::iovec { iov_base, iov_len }
+    }
+    pub fn as_ptr(&self) -> *const u8 {
+        self.ptr
+    }
+    pub fn as_ptr_mut(&self) -> *mut u8 {
+        self.ptr
+    }
+}
+
+impl Drop for Buffer {
+    fn drop(&mut self) {
+        unsafe { deallocate(self.ptr, self.layout); }
+    }
+}
+
+#[inline]
+fn submit(ring: &mut IoUring, sqe: io_uring::squeue::Entry) -> Result<(), DcpError> {
+    unsafe { ring.submission().push(&sqe)? };
+    ring.submit()?;
+    Ok(())
+}
+
+#[inline]
+fn poll(ring: &mut IoUring) -> io_uring::cqueue::Entry {
+    loop {
+        if let Some(cqe) = ring.completion().next() {
+            return cqe;
+        }
+    }
+}
 
 #[instrument(level="debug", skip(ring))]
 fn open(ring: &mut IoUring, path: &FastStr, flags: libc::c_int) -> Result<types::Fd, DcpError> {
@@ -83,7 +126,7 @@ fn register_file(ring: &mut IoUring, fd: Fd) -> Result<Fixed, DcpError> {
 fn create_buffers(size: u32, align: u32, count: u8) -> Result<Vec<Buffer>, DcpError> {
     let mut buffers = Vec::with_capacity(count as usize);
     for _ in 0..count {
-        let buf = Buffer::new(size, align)?;
+        let buf = Buffer::new(size as usize, align as usize)?;
         buffers.push(buf);
     }
     Ok(buffers)
@@ -104,8 +147,13 @@ fn register_buffers(ring: &mut IoUring, buffers: &Vec<Buffer>, fill: bool) -> Re
 }
 
 #[instrument(level="debug", skip(ring))]
-fn unregister(ring: &mut IoUring) -> Result<(), DcpError> {
+fn unregister_buffers(ring: &mut IoUring) -> Result<(), DcpError> {
     ring.submitter().unregister_buffers()?;
+    Ok(())
+}
+
+#[instrument(level="debug", skip(ring))]
+fn unregister_files(ring: &mut IoUring) -> Result<(), DcpError> {
     ring.submitter().unregister_files()?;
     Ok(())
 }
@@ -193,10 +241,12 @@ pub fn io_uring_copy(src: FastStr, dst: FastStr, direct: bool, poll_ms: Option<u
 
     fsync(&mut write_ring, write_ffd)?;
     ftruncate(&mut write_ring, write_ffd, file_size)?;
-    unregister(&mut write_ring)?;
+    unregister_buffers(&mut write_ring)?;
+    unregister_files(&mut write_ring)?;
     close(&mut write_ring, write_fd)?;
 
-    unregister(&mut read_ring)?;
+    unregister_buffers(&mut read_ring)?;
+    unregister_files(&mut read_ring)?;
     close(&mut read_ring, read_fd)?;
 
     Ok(write_size)

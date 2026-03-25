@@ -22,8 +22,6 @@ pub enum Cmd {
         #[arg(long)]
         poll_ms: Option<u32>,
         #[arg(long)]
-        block_size: ByteSize,
-        #[arg(long)]
         buffer_size: ByteSize,
         #[arg(long)]
         buffer_count: u8,

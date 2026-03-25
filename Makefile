@@ -23,7 +23,6 @@ run-release-donna-io-uring: build-release
 		--name dcp rst ./target/release/dcp \
 		io-uring \
 		--direct \
-		--block-size=4KiB \
 		--buffer-size=16MiB \
 		--buffer-count=2 \
 		--src=/dcp/dat/donna.mkv \
@@ -34,7 +33,6 @@ run-release-yakuza-io-uring: build-release
 		--name dcp rst ./target/release/dcp \
 		io-uring \
 		--direct \
-		--block-size=4KiB \
 		--buffer-size=16MiB \
 		--buffer-count=2 \
 		--src=/dcp/dat/yakuza.mkv \

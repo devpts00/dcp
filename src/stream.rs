@@ -1,12 +1,11 @@
 use crate::error::DcpError;
-use crate::io::{open_file, Mode};
-use crate::util::{allocate, calc_sizes, deallocate, show_progress};
+use crate::common::{allocate, calc_sizes, deallocate, open_file, show_progress, Mode};
 use faststr::FastStr;
 use std::alloc::Layout;
 use std::io::{Read, Write};
 use std::slice::from_raw_parts_mut;
 use thousands::Separable;
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, instrument, trace};
 
 #[instrument(level="debug")]
 pub fn stream_copy(src: FastStr, dst: FastStr, direct: bool, buffer_size: u32) -> Result<u64, DcpError> {

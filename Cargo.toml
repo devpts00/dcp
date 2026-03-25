@@ -14,5 +14,4 @@ io-uring = "0.7.11"
 nix = { version = "0.31.2", features = ["ioctl"] }
 bytesize = "2.3.1"
 thousands = "0.2.0"
-memmap2 = "0.9.10"
 num-integer = "0.1.46"

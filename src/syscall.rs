@@ -4,8 +4,7 @@ use faststr::FastStr;
 use nix::ioctl_write_ptr;
 use tracing::{info, instrument};
 use crate::error::DcpError;
-use crate::io::{check_size_or_errno, open_file, Mode};
-use crate::util::show_progress;
+use crate::common::{check_size_or_errno, open_file, show_progress, Mode};
 
 ioctl_write_ptr!(set_flags, b'f', 2, i32);
 

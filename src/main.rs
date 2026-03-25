@@ -1,30 +1,23 @@
 mod args;
-mod util;
+mod common;
 mod error;
-mod io;
 mod iouring;
 mod stream;
 mod syscall;
 
 use crate::args::Cmd;
 use crate::error::DcpError;
-use crate::io::{check_size_or_error, poll, submit, Buffer};
-use crate::util::{init_tracing, log};
-use clap::Parser;
-use faststr::FastStr;
-use io_uring::types::{Fd, Fixed};
-use io_uring::{opcode, types, IoUring};
-use std::collections::VecDeque;
-use std::time::Instant;
-use thousands::Separable;
-use tracing::{debug, info};
 use crate::iouring::io_uring_copy;
 use crate::stream::stream_copy;
 use crate::syscall::syscall_copy;
+use crate::common::{init_tracing, log};
+use clap::Parser;
+use std::time::Instant;
+use tracing::{debug, info};
 
 fn run(cmd: Cmd) -> Result<u64, DcpError> {
     match cmd {
-        Cmd::IoUring { direct, poll_ms, block_size, buffer_size, buffer_count, files } => {
+        Cmd::IoUring { direct, poll_ms, buffer_size, buffer_count, files } => {
             io_uring_copy(files.src, files.dst, direct, poll_ms, buffer_size.as_u64() as u32, buffer_count)
         }
         Cmd::Stream { buffer_size, direct, files } => {

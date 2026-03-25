@@ -5,9 +5,6 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum DcpError {
 
-    #[error("unexpected: {0}")]
-    Unexpected(&'static str),
-
     #[error("layout: {0}")]
     Layout(#[from] LayoutError),
 

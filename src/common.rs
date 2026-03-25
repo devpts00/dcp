@@ -3,7 +3,11 @@ use faststr::FastStr;
 use num_integer::lcm;
 use std::alloc::{dealloc, Layout};
 use std::error::Error;
+use std::fs::File;
+use std::os::fd::AsRawFd;
+use std::os::unix::prelude::OpenOptionsExt;
 use std::os::linux::fs::MetadataExt;
+use libc::posix_fadvise64;
 use tracing::level_filters::LevelFilter;
 use tracing::{debug, error, instrument};
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -31,9 +35,35 @@ pub fn init_tracing() {
 }
 
 #[inline]
+pub fn check_size_or_error(res: i32) -> Result<u32, std::io::Error> {
+    if res < 0 {
+        Err(std::io::Error::from_raw_os_error(-res))
+    } else {
+        Ok(res as u32)
+    }
+}
+
+#[inline]
+pub fn check_size_or_errno(res: isize) -> Result<usize, std::io::Error> {
+    if res < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(res as usize)
+    }
+}
+
+#[inline]
 pub fn log<T, E: Error>(result: Result<T, E>) {
     if let Err(err) = result {
         error!("error: {}", err);
+    }
+}
+
+#[inline]
+pub fn show_progress(prev: &mut u64, curr: u64) {
+    if curr > *prev {
+        *prev = curr;
+        debug!("progress: {}%", curr);
     }
 }
 
@@ -69,11 +99,30 @@ pub fn calc_sizes(src: &FastStr, dst: &FastStr) -> Result<(u64, u32), DcpError> 
     Ok((src_file_size, block_size))
 }
 
-#[inline]
-pub fn show_progress(prev: &mut u64, curr: u64) {
-    if curr > *prev {
-        *prev = curr;
-        debug!("progress: {}%", curr);
-    }
+#[derive(Debug)]
+pub enum Mode {
+    Read, Write
 }
 
+#[instrument(level="debug")]
+pub fn open_file(path: &FastStr, mode: Mode, flags: libc::c_int, advise: libc::c_int) -> Result<File, std::io::Error> {
+    let mut options = File::options();
+    match mode {
+        Mode::Read => {
+            options.read(true);
+        }
+        Mode::Write => {
+            options.write(true).create(true).truncate(true);
+        }
+    }
+    if flags != 0 {
+        options.custom_flags(flags);
+    }
+    let file = options.open(path.as_str())?;
+    if advise != 0 {
+        unsafe {
+            posix_fadvise64(file.as_raw_fd(), 0, 0, advise);
+        }
+    }
+    Ok(file)
+}
