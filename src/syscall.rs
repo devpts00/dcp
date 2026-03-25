@@ -27,14 +27,12 @@ pub fn syscall_copy(src: FastStr, dst: FastStr, direct: bool, chunk_size: u32) -
         libc::ioctl(write_file.as_raw_fd(), libc::FS_IOC_SETFLAGS, &mut flags);
     };
 
-    let copy_size = 16 * 1024 * 1024;
-
     let null = std::ptr::null_mut();
     let mut write_size = 0;
     let mut progress = 0;
     while write_size < file_size {
         let res = unsafe {
-            libc::copy_file_range(read_file.as_raw_fd(), null, write_file.as_raw_fd(), null, copy_size, 0)
+            libc::copy_file_range(read_file.as_raw_fd(), null, write_file.as_raw_fd(), null, chunk_size as libc::size_t, 0)
         };
         let size = check_size_or_errno(res)?;
         write_size = write_size + size;

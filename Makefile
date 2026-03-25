@@ -67,6 +67,6 @@ run-release-yakuza-syscall: build-release
 	docker compose run --rm -it --remove-orphans \
 		--name dcp rst ./target/release/dcp \
 	  	syscall \
-	  	--chunk-size=16MiB \
+	  	--chunk-size=2GiB \
 		--src=/dcp/dat/yakuza.mkv \
 		--dst=/dcp/dat/yakuza.copy.mkv

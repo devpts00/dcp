@@ -35,5 +35,5 @@ fn main() {
     debug!("cmd: {:?}", cmd);
     let start = Instant::now();
     log(run(cmd));
-    info!("elapsed: {} seconds", start.elapsed().as_secs_f64());
+    debug!("elapsed: {} seconds", start.elapsed().as_secs_f64());
 }
