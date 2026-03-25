@@ -84,6 +84,9 @@ pub unsafe fn deallocate(ptr: *mut u8, layout: Layout) {
 
 #[instrument(level="debug")]
 pub fn calc_sizes(src: &FastStr, dst: &FastStr) -> Result<(u64, u32), DcpError> {
+
+    let page_size = page_size::get() as u32;
+
     let src_meta = std::fs::metadata(src.as_str())?;
     let src_block_size = src_meta.st_blksize() as u32;
     let src_file_size = src_meta.len();
@@ -95,6 +98,7 @@ pub fn calc_sizes(src: &FastStr, dst: &FastStr) -> Result<(u64, u32), DcpError> 
     debug!("dst, block: {}, length: {}", dst_block_size, dst_file_size);
 
     let block_size = lcm(src_block_size, dst_block_size);
+    let block_size = lcm(block_size, page_size);
     debug!("buf, block: {}", block_size);
     Ok((src_file_size, block_size))
 }
